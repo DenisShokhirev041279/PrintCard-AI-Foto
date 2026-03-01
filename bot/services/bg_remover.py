@@ -9,8 +9,15 @@ from rembg import remove, new_session
 
 logger = logging.getLogger(__name__)
 
-# birefnet-general — SOTA-модель, лучший результат для продуктовых фото
-_session = new_session("birefnet-general")
+# Сессия создаётся лениво при первом запросе — экономим память при старте
+_session = None
+
+
+def _get_session():
+    global _session
+    if _session is None:
+        _session = new_session("u2net")
+    return _session
 
 
 def _clean_alpha(png_bytes: bytes) -> bytes:
@@ -36,7 +43,7 @@ async def remove_background(image_bytes: bytes) -> bytes:
     :return: PNG-данные с прозрачным фоном.
     """
     try:
-        result: bytes = await asyncio.to_thread(remove, image_bytes, session=_session)
+        result: bytes = await asyncio.to_thread(remove, image_bytes, session=_get_session())
         result = await asyncio.to_thread(_clean_alpha, result)
         return result
     except Exception as exc:  # noqa: BLE001
