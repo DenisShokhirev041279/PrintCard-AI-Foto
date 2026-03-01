@@ -11,5 +11,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# предзагрузка модели silueta (~44MB) во время сборки образа
+RUN python -c "from rembg import new_session; new_session('silueta')"
+
 # точка входа
 CMD ["python", "main.py"]
