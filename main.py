@@ -2,6 +2,7 @@ import logging
 
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import BotCommand
 
 from config import BOT_TOKEN
 from bot.handlers import start  # noqa: F401 импорт для регистрации
@@ -17,6 +18,10 @@ async def main() -> None:
     # регистрация обработчиков
     start.register_handlers(dp)
     photo.register_handlers(dp)
+
+    await bot.set_my_commands([
+        BotCommand(command="start", description="Запустить бота"),
+    ])
 
     logger.info("Бот запускается")
     await dp.start_polling(bot)
