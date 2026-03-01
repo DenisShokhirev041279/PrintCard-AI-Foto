@@ -7,49 +7,44 @@ from PIL import Image
 
 logger = logging.getLogger(__name__)
 
-
 CANVAS_SIZE = (1000, 1000)  # стандарт маркетплейсов Ozon/WB/Авито
 
+BG_COLORS = {
+    "white":       (255, 255, 255, 255),
+    "gray":        (240, 240, 240, 255),
+    "transparent": (0,   0,   0,   0  ),
+}
 
-def composite_image(fg_bytes: bytes, bg_path: str | None = None) -> bytes:
-    """Накладывает изображение переднего плана на белый фон 1000×1000.
 
-    Масштабирует fg так, чтобы вписаться в фон с сохранением пропорций,
-    и центрирует его.
+def composite_image(fg_bytes: bytes, bg_color: str = "white") -> bytes:
+    """Накладывает изображение переднего плана на фон 1000×1000.
 
     :param fg_bytes: PNG с прозрачным фоном (результат rembg).
-    :param bg_path: путь к файлу кастомного фона (опционально).
-    :return: результирующий PNG в виде bytes.
+    :param bg_color: "white" | "gray" | "transparent"
+    :return: JPEG (для white/gray) или PNG (для transparent) в виде bytes.
     """
     try:
-        # белый фон 1000×1000 — стандарт российских маркетплейсов
-        if bg_path:
-            bg = Image.open(bg_path).convert("RGBA").resize(CANVAS_SIZE, Image.LANCZOS)
-        else:
-            bg = Image.new("RGBA", CANVAS_SIZE, (255, 255, 255, 255))
-
+        color = BG_COLORS.get(bg_color, BG_COLORS["white"])
         fg = Image.open(io.BytesIO(fg_bytes)).convert("RGBA")
 
-        # масштабируем fg с отступом 15% по краям
         bg_w, bg_h = CANVAS_SIZE
         fg_w, fg_h = fg.size
-        padding = 0.85
-        scale = min(bg_w * padding / fg_w, bg_h * padding / fg_h)
+        scale = min(bg_w * 0.85 / fg_w, bg_h * 0.85 / fg_h)
         new_w = int(fg_w * scale)
         new_h = int(fg_h * scale)
         fg = fg.resize((new_w, new_h), Image.LANCZOS)
 
-        # центрируем
         offset_x = (bg_w - new_w) // 2
         offset_y = (bg_h - new_h) // 2
 
-        # белая подложка + принтер
-        result = Image.new("RGBA", CANVAS_SIZE, (255, 255, 255, 255))
-        result.paste(bg, (0, 0), mask=bg)
+        result = Image.new("RGBA", CANVAS_SIZE, color)
         result.paste(fg, (offset_x, offset_y), mask=fg)
 
         out = io.BytesIO()
-        result.save(out, format="PNG")
+        if bg_color == "transparent":
+            result.save(out, format="PNG")
+        else:
+            result.convert("RGB").save(out, format="JPEG", quality=95)
         return out.getvalue()
     except Exception as exc:
         logger.exception("Ошибка при создании композиции: %s", exc)
