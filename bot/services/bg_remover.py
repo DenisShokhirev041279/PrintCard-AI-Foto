@@ -2,50 +2,39 @@ from __future__ import annotations
 
 import io
 import logging
-import asyncio
 
-from PIL import Image, ImageFilter
-from rembg import remove, new_session
+import aiohttp
+
+from config import REMOVEBG_API_KEY
 
 logger = logging.getLogger(__name__)
 
-# Сессия создаётся лениво при первом запросе — экономим память при старте
-_session = None
-
-
-def _get_session():
-    global _session
-    if _session is None:
-        _session = new_session("silueta")
-    return _session
-
-
-def _clean_alpha(png_bytes: bytes) -> bytes:
-    """Убирает тонкие артефакты по краям: слегка эродирует альфа-канал."""
-    img = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
-    r, g, b, a = img.split()
-
-    # размываем альфа, затем обрезаем порог — убираем полупрозрачный мусор
-    a_blur = a.filter(ImageFilter.GaussianBlur(radius=1))
-    a_clean = a_blur.point(lambda x: 0 if x < 30 else (255 if x > 200 else x))
-
-    img.putalpha(a_clean)
-    out = io.BytesIO()
-    img.save(out, format="PNG")
-    return out.getvalue()
+REMOVEBG_URL = "https://api.remove.bg/v1.0/removebg"
 
 
 async def remove_background(image_bytes: bytes) -> bytes:
-    """Асинхронно удаляет фон из изображения.
-
-    :param image_bytes: содержимое входного файла (любой формат),
-        которое будет передано в rembg.
-    :return: PNG-данные с прозрачным фоном.
-    """
+    """Удаляет фон через remove.bg API."""
     try:
-        result: bytes = await asyncio.to_thread(remove, image_bytes, session=_get_session())
-        result = await asyncio.to_thread(_clean_alpha, result)
-        return result
-    except Exception as exc:  # noqa: BLE001
+        data = aiohttp.FormData()
+        data.add_field(
+            "image_file",
+            io.BytesIO(image_bytes),
+            filename="photo.jpg",
+            content_type="image/jpeg",
+        )
+        data.add_field("size", "auto")
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                REMOVEBG_URL,
+                headers={"X-Api-Key": REMOVEBG_API_KEY},
+                data=data,
+            ) as resp:
+                if resp.status != 200:
+                    error_text = await resp.text()
+                    raise RuntimeError(f"remove.bg вернул {resp.status}: {error_text}")
+                return await resp.read()
+
+    except Exception as exc:
         logger.exception("Ошибка при удалении фона: %s", exc)
         raise
